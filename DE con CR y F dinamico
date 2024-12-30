@@ -1,0 +1,145 @@
+% Algoritmo de Evolución Diferencial (DE) con F y CR dinámicos
+% Por: JOSE PILLCO 2024
+
+% Parámetros del DE
+N = 50;  % Tamaño de la población
+D = 6;   % Dimensionalidad (angulos articulares: q1, q2, q3, q4, q5, q6)
+iteraciones_max = 1000;  % Número máximo de iteraciones
+
+% Límites de las articulaciones
+limites_min = [-pi, -pi/2, -pi, -pi, -pi, -pi]; % Límite inferior de los ángulos articulares
+limites_max = [pi, pi/2, pi, pi, pi, pi];       % Límite superior de los ángulos articulares
+
+% Población inicial aleatoria
+poblacion = limites_min + (limites_max - limites_min) .* rand(N, D);
+
+% Posición objetivo del efector final
+posicion_objetivo = [500; 300; 200];
+
+% Iniciar el temporizador para medir el tiempo de ejecución
+tic;
+
+% Inicializar variables de los mejores resultados
+mejor_individuo = [];
+mejor_error = inf;
+errores_por_generacion = zeros(iteraciones_max, 1);
+
+% Función para calcular la diferencia entre la posición calculada y la objetivo
+function error = funcion_objetivo(individuo, posicion_objetivo)
+    % Extraer los valores de las articulaciones
+    q1 = individuo(1);
+    q2 = individuo(2);
+    q3 = individuo(3);
+    q4 = individuo(4);
+    q5 = individuo(5);
+    q6 = individuo(6);
+    % Usar la función calcular_efector proporcionada
+    [x, y, z] = calcular_efector(q1, q2, q3, q4, q5, q6);
+    
+    % Calcular el error como la distancia euclidiana entre la posición calculada y la posición objetivo
+    error = sqrt((x - posicion_objetivo(1))^2 + (y - posicion_objetivo(2))^2 + (z - posicion_objetivo(3))^2);
+end
+
+% Algoritmo de Evolución Diferencial
+for iter = 1:iteraciones_max
+    % Ajustar el factor de mutación F y la tasa de recombinación CR dinámicamente
+    F = 1.2 - (iter / iteraciones_max) * (1.8 - 0.2);  % F disminuye de 1.2 a 0.5
+    CR = 0.9 - (iter / iteraciones_max) * (0.9 - 0.1); % CR disminuye de 0.9 a 0.1
+    
+    for i = 1:N
+        % Selección aleatoria de tres individuos diferentes a i
+        indices = randperm(N, 3);
+        while any(indices == i)
+            indices = randperm(N, 3);
+        end
+        r1 = poblacion(indices(1), :);
+        r2 = poblacion(indices(2), :);
+        r3 = poblacion(indices(3), :);
+        
+        % Mutación
+        V = r1 + F * (r2 - r3);
+        
+        % Aplicar límites de las articulaciones al vector mutante
+        V = min(max(V, limites_min), limites_max);
+        
+        % Recombinar con el individuo actual
+        U = poblacion(i, :);  % Vector hijo
+        for j = 1:D
+            if rand() <= CR
+                U(j) = V(j);
+            end
+        end
+        
+        % Aplicar límites de las articulaciones al individuo generado
+        U = min(max(U, limites_min), limites_max);
+        
+        % Calcular los errores solo una vez
+        error_U = funcion_objetivo(U, posicion_objetivo);   % Error del nuevo individuo
+        error_actual = funcion_objetivo(poblacion(i, :), posicion_objetivo);  % Error del individuo actual
+        
+        % Selección: reemplazar si la nueva solución es mejor
+        if error_U < error_actual
+            poblacion(i, :) = U;
+        end
+    end
+    
+    % Evaluar la población actual
+    errores = arrayfun(@(row) funcion_objetivo(poblacion(row, :), posicion_objetivo), 1:N);
+    [mejor_error_iter, mejor_idx] = min(errores);
+    mejor_individuo = poblacion(mejor_idx, :);
+    mejor_error = mejor_error_iter;
+    errores_por_generacion(iter) = mejor_error;
+
+    % Mostrar los datos de la generación
+    fprintf('Generación %d: Mejor fitness = %.6f, CR dinámico = %.6f, F dinámico = %.6f\n', iter, mejor_error, CR, F);
+end
+
+% Mostrar el mejor conjunto de ángulos al final
+[x_final, y_final, z_final] = calcular_efector(mejor_individuo(1), mejor_individuo(2), mejor_individuo(3), mejor_individuo(4), mejor_individuo(5), mejor_individuo(6));
+
+% Tiempo de ejecución total
+tiempo_ejecucion = toc;
+
+tiempo_promedio_por_generacion = tiempo_ejecucion / iteraciones_max;
+
+% Mostrar las métricas finales
+fprintf('--- RESULTADOS FINALES ---\n');
+fprintf('Generaciones: %d\n', iteraciones_max);
+fprintf('Mejor error alcanzado: %.6f\n', mejor_error);
+fprintf('Posición final del efector: x = %.6f, y = %.6f, z = %.6f\n', x_final, y_final, z_final);
+fprintf('Angulos articulares óptimos (radianes): q1 = %.4f, q2 = %.4f, q3 = %.4f, q4 = %.4f, q5 = %.4f, q6 = %.4f\n', ...
+    mejor_individuo(1), mejor_individuo(2), mejor_individuo(3), mejor_individuo(4), mejor_individuo(5), mejor_individuo(6));
+fprintf('Tiempo total de ejecución: %.4f segundos\n', tiempo_ejecucion);
+fprintf('Tiempo promedio por generación: %.6f segundos\n', tiempo_promedio_por_generacion);
+
+% Definir la función calcular_efector
+function [x, y, z] = calcular_efector(q1, q2, q3, q4, q5, q6)
+    % Esta función calcula las coordenadas x, y, z del efector final
+    % de un robot en función de las articulaciones q1, q2, q3, q4, q5, q6
+    
+    % Calcular los valores de sigma utilizando las relaciones dadas
+    sigma6 = cos(q1) * sin(q4) + cos(q4) * (cos(q2) * sin(q1) * sin(q3) + cos(q3) * sin(q1) * sin(q2));
+    sigma7 = sin(q1) * sin(q2) * sin(q3) - cos(q2) * cos(q3) * sin(q1);
+    sigma8 = sin(q1) * sin(q4) - cos(q4) * (cos(q1) * cos(q2) * sin(q3) + cos(q1) * cos(q3) * sin(q2));
+    sigma9 = cos(q1) * cos(q2) * cos(q3) - cos(q1) * sin(q2) * sin(q3);
+    sigma10 = cos(q2) * cos(q3) - sin(q2) * sin(q3);
+    sigma11 = cos(q2) * sin(q3) + cos(q3) * sin(q2);
+
+    % Calcular la coordenada x
+    x = (14909 * cos(q1)) / 100 - (2159 * cos(q2) * sin(q1)) / 5 + ...
+        (225 * sin(q5) * sigma6) / 4 + (225 * cos(q5) * sigma7) / 4 + ...
+        (43307 * sin(q1) * sin(q2) * sin(q3)) / 100 - (43307 * cos(q2) * cos(q3) * sin(q1)) / 100 - ...
+        (508 * cos(q2) * sin(q1) * sin(q3)) / 25 - (508 * cos(q3) * sin(q1) * sin(q2)) / 25;
+
+    % Calcular la coordenada y
+    y = (14909 * sin(q1)) / 100 + (2159 * cos(q1) * cos(q2)) / 5 + ...
+        (225 * sin(q5) * sigma8) / 4 + (225 * cos(q5) * sigma9) / 4 + ...
+        (43307 * cos(q1) * cos(q2) * cos(q3)) / 100 + (508 * cos(q1) * cos(q2) * sin(q3)) / 25 + ...
+        (508 * cos(q1) * cos(q3) * sin(q2)) / 25 - (43307 * cos(q1) * sin(q2) * sin(q3)) / 100;
+
+    % Calcular la coordenada z
+    z = (508 * cos(q2) * cos(q3)) / 25 - (2159 * sin(q2)) / 5 - ...
+        (43307 * cos(q2) * sin(q3)) / 100 - (43307 * cos(q3) * sin(q2)) / 100 - ...
+        (508 * sin(q2) * sin(q3)) / 25 - (225 * cos(q5) * sigma11) / 4 - ...
+        (225 * cos(q4) * sin(q5) * sigma10) / 4;
+end
